@@ -1,0 +1,13 @@
+# Entorno virtual
+venv/
+Lib/
+Scripts/
+Include/
+pyvenv.cfg
+
+# Secretos
+.env
+
+# Python
+__pycache__/
+*.pyc

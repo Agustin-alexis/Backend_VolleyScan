@@ -10,22 +10,40 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Lee el archivo .env (junto a manage.py). Ese archivo NO se sube a Git.
+load_dotenv(BASE_DIR / ".env")
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ub9q2oi6y5yu%1#)f-x5(o-2x#$8y%l*8!m%5iwr_d_tp8^!y('
+def variable_requerida(nombre):
+    valor = os.environ.get(nombre)
+    if not valor:
+        raise ImproperlyConfigured(
+            f"Falta la variable {nombre}. Defínela en el archivo .env (junto a manage.py)."
+        )
+    return valor
+
+
+# SECURITY WARNING: la clave secreta también firma los tokens de login.
+# Debe ser larga, aleatoria y estar solo en .env.
+SECRET_KEY = variable_requerida("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+    if h.strip()
+]
 
 
 # Application definition
@@ -38,16 +56,21 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # Apps de volleyscan
+    # Terceros
     'rest_framework',
+    'corsheaders',
+
+    # Apps de volleyscan
     'usuarios',
     'sesiones',
     'rutinas',
     'notificaciones',
     'contenido',
+    'panel_entrenador',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # debe ir primero
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,15 +102,18 @@ WSGI_APPLICATION = 'volleyscan.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+# Usuario, contraseña y puerto salen del archivo .env.
+# HOST 127.0.0.1 fuerza la conexión por red (TCP) y respeta el puerto.
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'volleyscan',
-        'USER': 'root',
-        'PASSWORD': 'r00t123',
-        'HOST': 'localhost',
-        'PORT': '3006',
+        'NAME': os.environ.get('DB_NAME', 'volleyscan'),
+        'USER': variable_requerida('DB_USER'),
+        'PASSWORD': variable_requerida('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST', '127.0.0.1'),
+        'PORT': os.environ.get('DB_PORT', '3306'),
+        'OPTIONS': {'charset': 'utf8mb4'},
     }
 }
 
@@ -114,13 +140,15 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
-TIME_ZONE = 'UTC'
+# Los DATETIME de MySQL no guardan zona horaria: se trabaja en hora local
+# para que coincidan con CURRENT_TIMESTAMP de la base de datos.
+TIME_ZONE = 'America/Bogota'
 
 USE_I18N = True
 
-USE_TZ = True
+USE_TZ = False
 
 
 # Static files (CSS, JavaScript, Images)
@@ -132,3 +160,34 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# ---------------------------------------------------------------------
+# API (panel del entrenador)
+# ---------------------------------------------------------------------
+
+# Solo tu frontend puede llamar a la API desde el navegador.
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': ['panel_entrenador.auth.JWTAuthentication'],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
+    'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
+    'DEFAULT_PAGINATION_CLASS': 'panel_entrenador.paginacion.PaginacionPanel',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/min',
+        'user': '300/min',
+        'login': '5/min',               # intentos de login por IP
+        'analisis_sesiones': '30/min',  # POST /analisis/sesiones
+    },
+}
+
+# Duración del token de acceso, en horas.
+PANEL_JWT_HORAS = 8

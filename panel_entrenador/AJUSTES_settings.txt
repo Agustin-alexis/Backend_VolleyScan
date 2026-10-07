@@ -1,0 +1,68 @@
+# =====================================================================
+# Fragmento para volleyscan/settings.py  (archivo de texto: copia
+# y adapta estas líneas en tu settings.py)
+#
+# pip install django djangorestframework mysqlclient django-cors-headers PyJWT bcrypt
+# =====================================================================
+import os
+
+# --- Secretos: SIEMPRE desde variables de entorno, nunca en el código ---
+# SECRET_KEY también firma los tokens JWT: debe ser larga y aleatoria.
+SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+
+INSTALLED_APPS = [
+    # ...las que ya trae Django (déjalas)...
+    "rest_framework",
+    "corsheaders",
+    "panel_entrenador",
+    "rest_framework",
+    "corsheaders",
+    "panel_entrenador"
+]
+
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",  # arriba del todo
+    # ...el resto igual...
+]
+
+# Solo tu frontend puede llamar a la API desde el navegador.
+CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": "volleyscan",
+        "USER": os.environ["DB_USER"],
+        "PASSWORD": os.environ["DB_PASSWORD"],
+        "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
+        "PORT": os.environ.get("DB_PORT", "3306"),
+        "OPTIONS": {"charset": "utf8mb4"},
+    }
+}
+
+# Los DATETIME de MySQL no guardan zona horaria: se trabaja en hora local
+# para que coincidan con CURRENT_TIMESTAMP de la base.
+TIME_ZONE = "America/Bogota"
+USE_TZ = False
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ["panel_entrenador.auth.JWTAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_PAGINATION_CLASS": "panel_entrenador.paginacion.PaginacionPanel",
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "300/min",
+        "login": "5/min",              # intentos de login por IP
+        "analisis_sesiones": "30/min",  # POST /analisis/sesiones
+    },
+}
+
+# Duración del token de acceso, en horas (opcional; por defecto 8).
+PANEL_JWT_HORAS = 8
